@@ -26,7 +26,7 @@ def full_unquote(s: str, max_depth: int = 5) -> str:
         try:
             decoded = re.sub(r'%[0-9a-fA-F]{2}',
                            lambda m: bytes.fromhex(m.group(0)[1:]).decode('utf-8', errors='ignore'), s)
-        except Exception:
+        except Exception as e:
             return s
         if decoded == s:
             return s
@@ -73,7 +73,7 @@ def try_base64_decode(params: Dict[str, str]) -> Dict[str, str]:
                 text = raw_bytes.decode("utf-8", errors="replace")
                 if _is_meaningful_text(text):
                     decoded[k] = text
-            except Exception:
+            except Exception as e:
                 pass
     return decoded
 

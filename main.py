@@ -3,6 +3,7 @@
 WAF 规则自动生成器 - CLI 入口
 """
 import sys
+import logging
 from typing import Optional
 
 from constants import REGEX_TEMPLATES, VULN_NAME_MAP, SUPPORTED_VULN_TYPES
@@ -11,6 +12,14 @@ from detector import detect_vuln_type, find_payload_params
 from generators.sec_rules import generate_sec_rules
 from generators.suricata import generate_suricata_rule
 from formatter import format_output
+
+# 配置日志
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+logger = logging.getLogger(__name__)
 
 
 # ============================================================
@@ -93,8 +102,10 @@ if __name__ == "__main__":
 
     raw = "\n".join(lines).strip()
     if not raw:
-        print("[!] 未输入任何内容")
+        logger.error("未输入任何内容")
         sys.exit(1)
+
+    logger.info("开始分析 HTTP 报文...")
 
     vuln_type = input("指定漏洞类型 (回车=自动检测): ").strip()
 
@@ -105,3 +116,4 @@ if __name__ == "__main__":
 
     print()
     print(result)
+    logger.info("规则生成完成")

@@ -211,12 +211,14 @@ def generate_generic_rules(
 
                     for cp_name, cp_val in context_params[:3]:
                         rules.append(_build_context_chain(cp_name, cp_val))
-                    rx_name = other_params[0][0]
-                    rules.append(
-                        f'SecRule "ARGS:{rx_name}" "@rx {rx_escaped}" '
-                        f'"capture,setvar:\'tx.msg=%{{rule.msg}}\','
-                        f'setvar:tx.anomaly_score=+%{{tx.critical_anomaly_score}}"'
-                    )
+
+                    if other_params:
+                        rx_name = other_params[0][0]
+                        rules.append(
+                            f'SecRule "ARGS:{rx_name}" "@rx {rx_escaped}" '
+                            f'"capture,setvar:\'tx.msg=%{{rule.msg}}\','
+                            f'setvar:tx.anomaly_score=+%{{tx.critical_anomaly_score}}"'
+                        )
                 else:
                     rules.append(
                         f'SecRule ARGS "@rx {rx_escaped}" '
