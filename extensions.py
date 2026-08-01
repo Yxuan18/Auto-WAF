@@ -64,7 +64,76 @@ def extract_multipart_file_field_names(raw_input: str) -> List[str]:
 
 
 # ============================================================
+# 正则构建（子函数）
+# ============================================================
+def _build_grouped_extensions(grp_name, grp_exts):
+    """构建分组扩展名正则"""
+    if grp_name in GROUP_REGEX_OVERRIDE:
+        return GROUP_REGEX_OVERRIDE[grp_name]
+    aliases = [e[len(grp_name):] for e in grp_exts if len(e) > len(grp_name) and e.startswith(grp_name)]
+    if not aliases:
+        return f"\x2e{grp_name}"
+    if len(aliases) == 1:
+        suffix = aliases[0]
+        return f"\x2e{grp_name}{suffix}?" if len(suffix) == 1 else f"\x2e{grp_name}({suffix})?"
+    return f"\x2e{grp_name}({'|'.join(aliases)})?"
+
+
+def _build_standalone_extensions(exts):
+    """构建独立扩展名正则"""
+    return ''.join(f"\x2e{e}" for e in exts)
+
+
+def _collect_matched_groups(exts):
+    """收集匹配的分组和独立扩展名"""
+    matched_groups, standalone = set(), []
+    for ext in exts:
+        found = False
+        for grp_name, grp_exts in EXTENSION_GROUPS.items():
+            if ext in grp_exts:
+                matched_groups.add(grp_name)
+                found = True
+                break
+        if not found:
+            standalone.append(ext)
+    return matched_groups, standalone
+
+
+# ============================================================
 # 正则构建
+# ============================================================
+def build_suricata_file_ext(extensions):
+    """构建 Suricata 文件扩展名 pcre 片段"""
+    if not extensions:
+        all_exts = []
+        for grp_exts in EXTENSION_GROUPS.values():
+            all_exts.extend(grp_exts)
+        all_exts += ["war", "jar", "exe", "sh", "py", "pl", "cgi"]
+    else:
+        all_exts_set = set()
+        for ext in extensions:
+            for grp_exts in EXTENSION_GROUPS.values():
+                if ext in grp_exts:
+                    all_exts_set.update(grp_exts)
+                    break
+            else:
+                all_exts_set.add(ext)
+        all_exts = sorted(all_exts_set)
+    return f"\x2e({'|'.join(all_exts)})"
+
+
+def build_files_rx(extensions):
+    """构建文件扩展名正则（hex 编码格式）"""
+    if not extensions:
+        parts = [_build_grouped_extensions(grp, exts) for grp, exts in EXTENSION_GROUPS.items()]
+        parts.append(_build_standalone_extensions(["war", "jar", "exe", "sh", "py", "pl", "cgi"]))
+        return f"(?i:{'|'.join(parts)}\b)"
+
+    matched_groups, standalone = _collect_matched_groups(extensions)
+    parts = [_build_grouped_extensions(grp, EXTENSION_GROUPS[grp]) for grp in matched_groups]
+    parts.extend(f"\x2e{e}" for e in standalone)
+    return f"(?i:{'|'.join(parts)}\b)"
+
 # ============================================================
 def build_suricata_file_ext(extensions: List[str]) -> str:
     """
