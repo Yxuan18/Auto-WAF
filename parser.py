@@ -397,6 +397,117 @@ def parse_http_input(raw: str) -> PocInfo:
     return info
 
 
+
+# ============================================================
+# HTTP 解析子函数
+# ============================================================
+def _parse_request_line(line: str) -> tuple:
+    """解析请求行，返回 (method, path, query_params)"""
+    method, path, query_params = "", "", {}
+    
+    if line.upper().startswith("HTTP/"):
+        return method, path, query_params
+    
+    if line.startswith("/"):
+        method = "GET"
+        if "?" in line:
+            path, qs = line.split("?", 1)
+            query_params = parse_query_string(qs)
+        else:
+            path = line
+        return method, path, query_params
+    
+    if " " in line:
+        parts = line.split(" ", 2)
+        method = parts[0].upper()
+        
+        if len(parts) >= 3 and parts[2].upper().startswith("HTTP/"):
+            full_url = parts[1]
+        elif len(parts) >= 2:
+            remaining = " ".join(parts[1:])
+            if remaining.upper().startswith("HTTP/"):
+                full_url = "/"
+            else:
+                http_idx = remaining.upper().rfind(" HTTP/")
+                full_url = remaining[:http_idx] if http_idx >= 0 else remaining
+        
+        if "?" in full_url:
+            path, qs = full_url.split("?", 1)
+            query_params = parse_query_string(qs)
+        else:
+            path = full_url
+        return method, path, query_params
+    
+    return "GET", "/", parse_query_string(line)
+
+
+def _parse_header_line(line: str, response_mode: bool) -> tuple:
+    """解析单行 header，返回 (is_header, key, value, is_body_line)"""
+    stripped = line.strip()
+    
+    # 空白行表示 headers 结束
+    if not stripped:
+        return False, "", "", True
+    
+    # JSON 行属于 body
+    if stripped.startswith("{") or stripped.startswith("["):
+        return False, "", "", True
+    
+    if ":" not in line:
+        # 只有 "=" 没有 ":" 是 body 内容
+        if "=" in line and not response_mode:
+            return False, "", "", True
+        return False, "", "", False
+    
+    eq_pos = line.find("=")
+    colon_pos = line.find(":")
+    
+    # "key=value" 格式优先于 "key: value" 格式
+    if eq_pos != -1 and eq_pos < colon_pos:
+        return False, "", "", True
+    
+    key, _, value = line.partition(":")
+    key = key.strip()
+    value = value.strip()
+    
+    # 响应模式下的特殊判断
+    if response_mode:
+        if not value or '"' in key:
+            return False, "", "", True
+        return True, key, value, False
+    
+    return True, key, value, False
+
+
+def _extract_response_parts(body_lines: list) -> tuple:
+    """从响应 body_lines 中提取状态行、headers 和 body"""
+    if not body_lines:
+        return "", {}, []
+    
+    first = body_lines[0].strip()
+    
+    # 检查第一行是否为状态行
+    if first.upper().startswith("HTTP/") or (first.isdigit() and len(first) == 3):
+        status = first
+        rest = body_lines[1:]
+    else:
+        status = ""
+        rest = body_lines
+    
+    headers = {}
+    body_start = 0
+    
+    for i, line in enumerate(rest):
+        if not line.strip():
+            body_start = i + 1
+            break
+        if ":" in line:
+            k, _, v = line.partition(":")
+            headers[k.strip()] = v.strip()
+    
+    body = rest[body_start:]
+    return status, headers, body
+
 # ============================================================
 # 辅助函数
 # ============================================================
