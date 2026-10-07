@@ -75,3 +75,6 @@ coverage.json
 mutants/
 .mutmut-cache
 mutmut-stats.json
+
+# agent working memory (per-machine)
+.claude/agent-memory/

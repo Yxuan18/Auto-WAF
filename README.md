@@ -151,9 +151,20 @@ Auto-WAF/
 ## 测试
 
 ```bash
-pip install -r requirements.txt   # pytest + pytest-cov
-pytest -v                          # 全量 38 个测试
+pip install -r requirements.txt   # pytest + pytest-cov + mutmut
+pytest -v                          # 全量 55 个测试
 ```
+
+## 变异测试
+
+测试全绿只证明断言跑过，不证明实现变错时断言会红。复跑变异测试：
+
+```bash
+mutmut run            # 生成突变体并逐个跑测试（约 3 分钟）
+mutmut results        # 查看存活/无覆盖的突变体清单
+```
+
+2026-10-07 基线：3296 个突变体，杀死 1197（36.3%），存活 1659，无测试覆盖 440。存活集中在 `generators/sec_rules.py` 的字符串细节（info_leak 112、file_upload 74 等）——已知缺口，欢迎补杀。
 
 ## License
 
