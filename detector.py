@@ -6,11 +6,8 @@
 import re
 from typing import List, Tuple, Dict, Any
 
-from constants import REGEX_TEMPLATES, CONTEXT_PARAM_WHITELIST, TAG_MAP
-from parser import (
-    full_unquote, try_base64_decode, collect_all_params,
-    get_all_param_names
-)
+from constants import REGEX_TEMPLATES, TAG_MAP
+from parser import full_unquote, try_base64_decode
 
 
 # ============================================================
@@ -48,7 +45,7 @@ def _build_detection_text(poc_info: PocInfo) -> str:
         if k != "__XML_BODY__":
             text_parts.append(f"{k}={v}")
             dv = full_unquote(v)
-        if dv != v:
+            if dv != v:
                 text_parts.append(f"{k}={dv}")
     
     # 原始请求体

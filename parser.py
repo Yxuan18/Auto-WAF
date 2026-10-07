@@ -26,7 +26,8 @@ def full_unquote(s: str, max_depth: int = 5) -> str:
         try:
             decoded = re.sub(r'%[0-9a-fA-F]{2}',
                            lambda m: bytes.fromhex(m.group(0)[1:]).decode('utf-8', errors='ignore'), s)
-        except Exception as e:
+        except (re.error, ValueError):
+            # 防御性兜底：解码链任何一环失败都返回原文，不能让检测流程炸掉
             return s
         if decoded == s:
             return s
@@ -73,8 +74,9 @@ def try_base64_decode(params: Dict[str, str]) -> Dict[str, str]:
                 text = raw_bytes.decode("utf-8", errors="replace")
                 if _is_meaningful_text(text):
                     decoded[k] = text
-            except Exception as e:
-                pass
+            except ValueError:
+                # 正常分支而非错误：值不是合法 base64（binascii.Error 是其子类），跳过即可
+                continue
     return decoded
 
 
@@ -240,7 +242,9 @@ def parse_http_input(raw: str) -> PocInfo:
     first_line = lines[0].strip()
 
     # 判断第一行：响应（HTTP/1.x 状态码）或请求（METHOD /path）
-    if first_line.upper().startswith("HTTP/"):
+    # 首行即状态行 → 直接进入响应段，后续头部走 response_headers 分支
+    response_section = first_line.upper().startswith("HTTP/")
+    if response_section:
         info["response_status"] = first_line
     elif first_line.startswith("/"):
         info["method"] = "GET"
@@ -279,8 +283,7 @@ def parse_http_input(raw: str) -> PocInfo:
         info["path"] = "/"
         info["query_params"] = parse_query_string(raw)
 
-    # 分离响应头和响应体
-    response_section = False
+    # 分离响应头和响应体（response_section 已在首行判断时初始化）
     body_lines: List[str] = []
 
     for i, line in enumerate(lines):

@@ -15,6 +15,8 @@ REGEX_TEMPLATES: Dict[str, str] = {
     "SQLi": (
         r"(?i:\b(select|union|update|order|insert|\x2f\x2a\x2a|delete|updatexml|extractvalue|"
         r"substr|or|and)\b[^\x0a\x0d]*?\b(select|sleep|by|from|where|into|set|md5|concat|version|convert|char)\b|"
+        r"\b(or|and)\b\s*[\x27\x22]?\w+[\x27\x22]?\s*\x3d\s*[\x27\x22]?\w+|"
+        r"\x69\x66\x28\s*\w+\s*\x3d|"
         r"\bWAITFOR\b[\s\S]*\bDELAY\b|(substring\x28|int\x2c)sys\x2efn\x5fsqlvarbasetostr)"
     ),
 

@@ -19,6 +19,11 @@ PocInfo = Dict[str, Any]
 # ============================================================
 # Suricata 规则生成子函数
 # ============================================================
+def _gen_sid() -> int:
+    """随机 sid：刻意不固定，避免与环境中已下发的规则冲突；需要确定性输出时由调用方固定 random 种子"""
+    return random.randint(1000000, 99999999)
+
+
 def _find_param_location(poc_info: PocInfo, param_name: str) -> tuple:
     """查找参数位置，返回 (param_value, location)"""
     for pn, pv in poc_info.get("query_params", {}).items():
@@ -37,7 +42,7 @@ def _build_body_pcre(param_name: str, regex_template: str, content_type: str, lo
                 f'\x22\x3a\x22[^\x0a\x0d\x22]*?{regex_template}/i";')
     elif "form-data" in content_type:
         return (f'http.request_body; pcre:"/\bname=\x22{param_name}'
-                f'\x22[\s\S]*?{regex_template}/i";')
+                f'\x22[\\s\\S]*?{regex_template}/i";')
     else:
         return (f'http.request_body; url_decode; pcre:"/\b{param_name}'
                 f'=[^\x0a\x0d\x26]*?{regex_template}/i";')
@@ -89,7 +94,7 @@ def _build_metadata(vuln_type: str) -> str:
 
 def _finalize_rule(parts: list, vuln_type: str) -> str:
     """完成规则构建"""
-    sid = random.randint(1000000, 99999999)
+    sid = _gen_sid()
     rule_body = " ".join(parts)
     return f'alert http any any -> any any ({rule_body} metadata:{_build_metadata(vuln_type)}; sid:{sid};)'
 
@@ -119,7 +124,7 @@ def _generate_file_upload_rule(poc_info: PocInfo, raw_input: str) -> str:
     if tag:
         metadata += f" classtype:{tag};"
 
-    sid = random.randint(1000000, 99999999)
+    sid = _gen_sid()
     rule_body = " ".join(parts)
     return f'alert http any any -> any any ({rule_body} metadata:{metadata}; sid:{sid};)'
 
@@ -248,6 +253,6 @@ def generate_suricata_rule(
         if tag:
             metadata += f" classtype:{tag};"
 
-    sid = random.randint(1000000, 99999999)
+    sid = _gen_sid()
     rule_body = " ".join(parts)
     return f'alert http any any -> any any ({rule_body} metadata:{metadata}; sid:{sid};)'
