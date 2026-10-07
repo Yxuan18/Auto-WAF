@@ -21,13 +21,16 @@ def format_output(
     rules: List[str],
     poc_info: PocInfo,
     vuln_type: str,
-    vuln_name: str,
     matched_payload: str,
     confidence: float,
     selected_param: str = "",
-    raw_input: str = ""
+    raw_input: str = "",
+    suricata_rule: str = ""
 ) -> str:
-    """格式化最终输出"""
+    """
+    格式化最终输出
+    suricata_rule: 已生成的 Suricata 规则（analyze_http 路径传入，避免重复生成导致 sid 不一致）
+    """
     output: List[str] = []
 
     # 检测说明
@@ -46,7 +49,8 @@ def format_output(
     # Suricata 规则
     output.append("【Suricata 规则】")
     output.append("")
-    suricata_rule = generate_suricata_rule(poc_info, vuln_type, selected_param, raw_input)
+    if not suricata_rule:
+        suricata_rule = generate_suricata_rule(poc_info, vuln_type, selected_param, raw_input)
     output.append(suricata_rule)
     output.append("")
 

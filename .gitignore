@@ -65,3 +65,13 @@ Thumbs.db
 *.pcap
 *.log
 rules_output/
+
+# tdd-guardian generated artifacts
+.claude/tdd-guardian/state.json
+.claude/tdd-guardian/receipts.json
+
+# coverage / mutation artifacts
+coverage.json
+mutants/
+.mutmut-cache
+mutmut-stats.json

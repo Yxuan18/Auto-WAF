@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 2,
+  "enabled": true,
+  "enforceOnTaskCompleted": true,
+  "blockCommitWithoutFreshGate": true,
+  "staleGateAction": "deny",
+  "gateFreshnessMinutes": 120,
+  "smartStaleness": true,
+  "bypassEnv": "TDD_GUARD_BYPASS",
+  "preflightCommand": "",
+  "lanes": [
+    {
+      "name": "unit",
+      "description": "进程内 pytest 全量测试（含迁移后的 legacy 套件），无外部服务，实测 ~6s。",
+      "command": ".venv/bin/python -m pytest --cov --cov-report=json:coverage.json --cov-report=term",
+      "gateOn": ["taskCompleted", "commit"],
+      "coverage": "include",
+      "coverageSummaryPath": "coverage.json",
+      "probeCommand": ".venv/bin/python -m pytest --collect-only -q",
+      "timeoutMs": 600000
+    }
+  ],
+  "coverageThresholds": { "lines": 55, "functions": 0, "branches": 40, "statements": 55 },
+  "criticalPaths": [
+    {
+      "glob": "generators/**",
+      "description": "规则生成本库的核心产出——错误规则会直接下发到 WAF 拦截面。",
+      "thresholds": { "lines": 60, "functions": 0, "branches": 40, "statements": 60 },
+      "requireSpecLevel": "S3"
+    }
+  ],
+  "coverageMode": "no-decrease",
+  "requireMutation": true,
+  "mutationCommand": ".venv/bin/mutmut run",
+  "mutationGateOn": ["push"]
+}

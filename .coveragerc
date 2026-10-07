@@ -1,0 +1,12 @@
+[run]
+branch = true
+source =
+    parser
+    detector
+    constants
+    encoder
+    extensions
+    formatter
+    main
+    server
+    generators

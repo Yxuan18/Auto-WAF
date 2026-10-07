@@ -1,0 +1,12 @@
+[tool.mutmut]
+source_paths = [
+    "generators/",
+    "parser.py",
+    "detector.py",
+    "constants.py",
+    "encoder.py",
+    "extensions.py",
+    "formatter.py",
+    "main.py",
+    "server.py",
+]
