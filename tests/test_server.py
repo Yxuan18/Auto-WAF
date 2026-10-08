@@ -4,11 +4,14 @@ HTTP 后端服务与结构化分析入口测试
 """
 import http.client
 import json
+import socket
 import threading
+import time
 from typing import Any, Tuple
 
 import pytest
 
+import server as server_mod
 from main import analyze_http, auto_gen_rule, auto_gen_rule_with_type
 from server import make_server, MAX_BODY_BYTES
 
@@ -238,3 +241,77 @@ class TestServerEndpoints:
         status, body = _request(server_addr, "POST", "/generate", json.dumps({}))
         assert status == 400
         assert "缺少必填字段" in body["error"]
+
+    def test_generate_deeply_nested_json_returns_400(self, server_addr):
+        """深嵌套 JSON 触发 RecursionError 时回 400，而不是掐断连接"""
+        status, body = _request(server_addr, "POST", "/generate", "[" * 50000)
+        assert status == 400
+        assert "嵌套" in body["error"]
+
+    def test_oversized_body_trickle_cannot_hold_thread(self, server_addr, monkeypatch):
+        """声明超大 Content-Length 的慢滴客户端不能无限占用线程
+
+        修复前：413 后按声明长度 drain，客户端持续滴数据即可让连接永远存活。
+        修复后：drain 有墙钟预算，预算耗尽即关闭连接。
+
+        发送方是独立线程：主线程若边 recv 边发，recv 阻塞期间客户端静默，
+        服务端 1s IO 超时就会关连接——那样钉死的是 IO 超时路径而非预算路径，
+        drain 循环条件被变异（and→or）时测试不会失败。
+        """
+        monkeypatch.setattr(server_mod, "DRAIN_TIME_BUDGET_S", 0.5)
+        sock = socket.create_connection(server_addr, timeout=10)
+        try:
+            declared = MAX_BODY_BYTES + 5000000
+            sock.sendall(
+                b"POST /generate HTTP/1.1\r\nHost: t\r\nContent-Type: application/json\r\n"
+                + f"Content-Length: {declared}\r\n\r\n".encode()
+                + b"x" * 65536
+            )
+            # 先完整读到 413 响应
+            buf = b""
+            while b"\r\n\r\n" not in buf:
+                chunk = sock.recv(4096)
+                if not chunk:
+                    pytest.fail("未收到 413 响应连接就被关闭")
+                buf += chunk
+            assert b" 413 " in buf.split(b"\r\n", 1)[0]
+
+            # 独立线程持续慢滴（20KB/s，3s 内 ~60KB，远低于 1MB 字节上限，
+            # 终止 drain 的只能是时间预算）；主线程只等服务端关闭
+            stop = threading.Event()
+
+            def trickle():
+                while not stop.is_set():
+                    try:
+                        sock.sendall(b"x" * 1024)
+                    except OSError:
+                        return
+                    time.sleep(0.05)
+
+            sender = threading.Thread(target=trickle, daemon=True)
+            sender.start()
+            sock.settimeout(3)
+            closed = False
+            try:
+                deadline = time.monotonic() + 3
+                while time.monotonic() < deadline:
+                    try:
+                        # 预算 0.5s + 一次 IO 超时 1s，正确实现 ~1.5s 内必关；
+                        # 若循环条件变异成忽略预算，3s 内不会关，recv 超时即失败。
+                        # 循环读是为了先消费完剩余响应体字节再等 EOF
+                        d = sock.recv(4096)
+                    except socket.timeout:
+                        break
+                    except ConnectionError:
+                        # 发送线程还在灌数据，服务端关闭时收到 RST 而非干净 EOF——同样是关闭
+                        closed = True
+                        break
+                    if d == b"":
+                        closed = True
+                        break
+            finally:
+                stop.set()
+                sender.join(timeout=1)
+            assert closed, "服务端应在 drain 预算耗尽后关闭慢滴连接"
+        finally:
+            sock.close()

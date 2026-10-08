@@ -19,6 +19,8 @@ WAF 规则生成器 - HTTP 后端服务（纯标准库，零依赖）
 import argparse
 import json
 import logging
+import socket
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Dict
 
@@ -31,6 +33,11 @@ logger = logging.getLogger(__name__)
 MAX_BODY_BYTES = 1024 * 1024
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8317
+# 413 后丢弃请求体的墙钟预算：Content-Length 是攻击者可控的整数，
+# 慢滴客户端不能靠声明超大长度无限占用线程
+DRAIN_TIME_BUDGET_S = 5.0
+# 收尾读取的短超时：静默客户端 1 秒内放弃，不用等满 30 秒 socket 超时
+DRAIN_IO_TIMEOUT_S = 1.0
 
 
 class _HttpError(Exception):
@@ -83,6 +90,9 @@ class WafRuleRequestHandler(BaseHTTPRequestHandler):
             data = json.loads(raw.decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError):
             raise _HttpError(400, "请求体不是合法 UTF-8 JSON")
+        except RecursionError:
+            # 深嵌套 JSON 会让 json.loads 递归爆栈：按请求不合法回 400，而不是炸穿 handler
+            raise _HttpError(400, "JSON 嵌套层级过深")
         if not isinstance(data, dict):
             raise _HttpError(400, "JSON 根节点必须是对象")
 
@@ -92,13 +102,28 @@ class WafRuleRequestHandler(BaseHTTPRequestHandler):
         return data
 
     def _drain_body(self, length: int) -> None:
-        """分块丢弃未读的请求体（单块 64KB，内存有界）"""
-        remaining = length
-        while remaining > 0:
-            chunk = self.rfile.read(min(64 * 1024, remaining))
-            if not chunk:
-                break
-            remaining -= len(chunk)
+        """分块丢弃未读的请求体（单块 64KB，内存有界，墙钟有界）。
+
+        只 drain min(length, MAX_BODY_BYTES) 且最多 DRAIN_TIME_BUDGET_S 秒，
+        之后关闭连接——413 响应此前已完整发出，正常客户端不受影响；
+        慢滴客户端（每块 64KB 分多次送）不能靠声明的超大长度无限占用线程。
+        """
+        deadline = time.monotonic() + DRAIN_TIME_BUDGET_S
+        remaining = min(length, MAX_BODY_BYTES)
+        try:
+            # 马上要关连接，收尾读取用短超时就够了：静默客户端 1 秒内放弃
+            self.connection.settimeout(DRAIN_IO_TIMEOUT_S)
+            while remaining > 0 and time.monotonic() < deadline:
+                # read1 单次底层读取即返回，否则慢滴客户端能让 read(64KB) 无限阻塞
+                chunk = self.rfile.read1(min(64 * 1024, remaining))
+                if not chunk:
+                    break
+                remaining -= len(chunk)
+        except (socket.timeout, ConnectionResetError):
+            # 超时/断连后放弃剩余 drain：连接反正要关，读多少算多少
+            pass
+        finally:
+            self.close_connection = True
 
     def log_message(self, format: str, *args: Any) -> None:  # noqa: A002 - 基类签名固定
         """把默认的 stderr 访问日志接到 logging 体系"""
